@@ -70,9 +70,11 @@
     // returns true if JSON is well formed
     // and valid according to its schema
     var isValidJson = function(advanced){
-        var valid;
-        try{
-            valid = advanced.validateSchema(advanced.get());
+        var valid,
+            cleanedData;
+        try {
+            cleanedData = window.cleanData(advanced.get());
+            valid = advanced.validateSchema(cleanedData);
         }catch (e){
             valid = false;
         }
@@ -95,7 +97,8 @@
             editorContainer = $('#' + id),
             html, editor, options, wrapper, header,
             getEditorValue, updateRaw, advancedEditor,
-            $advancedEl;
+            $advancedEl,
+            contextField;
         // inject editor unless already present
         if(!editorContainer.length){
             html =  '<div class="jsoneditor-wrapper">';
@@ -160,6 +163,17 @@
             }
         });
 
+        // trigger schema-data validation on default values change
+        contextField = window.getContext();
+        if (contextField) {
+            contextField.addEventListener('change', function () {
+                if (inFullScreenMode) {
+                    advancedEditor.validate();
+                } else {
+                    editor.onChange(JSON.parse(field.val()));
+                }
+            });
+        }
         // add advanced edit button
         header = editorContainer.find('> div > h3');
         header.find('span:first-child').hide();  // hides editor title

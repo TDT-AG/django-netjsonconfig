@@ -338,15 +338,21 @@ if not app_settings.BACKEND_DEVICE_LIST:  # pragma: nocover
 
 
 class AbstractTemplateAdmin(BaseConfigAdmin):
-    list_display = ['name', 'type', 'backend', 'default', 'created', 'modified']
+    list_display = ['name', 'type', 'backend', 'sharing', 'default', 'created', 'modified']
     list_filter = ['backend', 'type', 'default', 'created']
     search_fields = ['name']
-    fields = ['name',
+    fields = ['sharing',
+              'name',
+              'url',
+              'key',
               'type',
               'backend',
               'vpn',
               'auto_cert',
               'tags',
+              'description',
+              'notes',
+              'default_values',
               'default',
               'config',
               'created',
@@ -358,6 +364,9 @@ class AbstractTemplateAdmin(BaseConfigAdmin):
         self.message_user(request, _('Successfully cloned selected templates.'), messages.SUCCESS)
 
     actions = ['clone_selected_templates']
+
+    class Media(BaseConfigAdmin.Media):
+        js = BaseConfigAdmin.Media.js + [static('{0}js/{1}'.format(prefix, 'template_admin.js'))]
 
 
 class AbstractVpnForm(forms.ModelForm):

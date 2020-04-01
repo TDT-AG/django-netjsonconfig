@@ -2,17 +2,28 @@ from copy import copy
 
 from django.contrib.admin.models import ADDITION, LogEntry
 from django.contrib.contenttypes.models import ContentType
+from collections import OrderedDict
+
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import ugettext_lazy as _
+from jsonfield import JSONField
 from taggit.managers import TaggableManager
 
+from openwisp_utils.utils import get_random_key
 from ..settings import DEFAULT_AUTO_CERT
+from ..validators import key_validator
 from .base import BaseConfig
 
 TYPE_CHOICES = (
     ('generic', _('Generic')),
     ('vpn', _('VPN-client')),
+)
+SHARING_CHOICES = (
+    ('private', _('Private')),
+    ('public', _('Public')),
+    ('secret_key', _('Shared via secret key')),
+    ('import', _('Import'))
 )
 
 
@@ -57,6 +68,43 @@ class AbstractTemplate(BaseConfig):
                                                 'be automatically managed behind the scenes '
                                                 'for each configuration using this template, '
                                                 'valid only for the VPN type'))
+    sharing = models.CharField(_('Sharing settings'),
+                               choices=SHARING_CHOICES,
+                               default='private',
+                               max_length=16,
+                               db_index=True,
+                               help_text=_('Whether to keep this template private, share it publicly, '
+                                           'share it privately using a secret key or import its '
+                                           'contents from another source'))
+    key = models.CharField(max_length=64,
+                           null=True,
+                           blank=True,
+                           default=get_random_key,
+                           validators=[key_validator],
+                           verbose_name=_('Secret key'),
+                           help_text=_('Secret key needed to import the template'))
+    description = models.TextField(_('Description'),
+                                   blank=True,
+                                   null=True,
+                                   help_text=_('Public description of this template'))
+    notes = models.TextField(_('Notes'),
+                             blank=True,
+                             null=True,
+                             help_text=_('Internal notes for administrators'))
+    default_values = JSONField(_('Default Values'),
+                               default=dict,
+                               blank=True,
+                               help_text=_('A dictionary containing the default '
+                                           'values for the variables used by this '
+                                           'template; these default variables will '
+                                           'be used during schema validation.'),
+                               load_kwargs={'object_pairs_hook': OrderedDict},
+                               dump_kwargs={'indent': 4})
+    url = models.URLField(_('Import URL'),
+                          max_length=200,
+                          null=True,
+                          blank=True,
+                          help_text=_('URL from which the template will be imported'))
     __template__ = True
 
     class Meta:
@@ -94,6 +142,12 @@ class AbstractTemplate(BaseConfig):
         * automatically determines configuration if necessary
         """
         super().clean(*args, **kwargs)
+        if self.sharing == 'public' or self.sharing == 'secret_key':
+            if not self.description:
+                raise ValidationError(
+                    {'description': _('Please enter a description of the shared template')})
+        if self.sharing != 'secret_key':
+            self.key = None
         if self.type == 'vpn' and not self.vpn:
             raise ValidationError({
                 'vpn': _('A VPN must be selected when template type is "VPN"')
@@ -103,12 +157,17 @@ class AbstractTemplate(BaseConfig):
             self.auto_cert = False
         if self.type == 'vpn' and not self.config:
             self.config = self.vpn.auto_client(auto_cert=self.auto_cert)
+        super(AbstractTemplate, self).clean(*args, **kwargs)
 
     def get_context(self):
-        c = {
+        if self.default_values is not None:
+            c = self.default_values
+        else:
+            c = {}
+        c.update({
             'id': str(self.id),
             'name': self.name,
-        }
+        })
         c.update(super().get_context())
         return c
 
